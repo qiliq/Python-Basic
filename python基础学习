@@ -1,0 +1,116 @@
+# -*- coding: utf-8 -*-
+# r''表示不转义
+import math
+from collections import Iterable
+print(r'\\\t\\')
+print('''aaa   
+aaa   
+aaa''')
+print(len('aaa'))
+r = (85-72)/72*100
+print('成绩提升了%.2f%%' % r)
+# creating a list
+alist = ['b', 'a', 'd', 'c']
+print(type(alist))
+print(alist)
+print(alist[0])
+# 负索引返回列表末尾开始的元素
+print(alist[-1])
+# 切片 返回指定开始和结束索引的元素(右开区间)
+print(alist[0:2])
+# append()在列表末尾添加 一个 元素
+alist.append('d')
+print(alist)
+# insert()指定位置添加一个元素
+alist.insert(2, 'c')
+print(alist)
+# remove()删除列表中与给定值匹配的第一个匹配项
+alist.remove('b')
+print(alist)
+# pop()删除指定索引的元素，若未指定索引，删除最后一个元素
+alist.pop(1)
+print(alist)
+alist.pop()
+print(alist)
+# 排序 sort()
+alist.sort()
+print(alist)
+# 合并列表
+blist = ['e', 'f']
+skills = alist + blist
+print(skills)
+# 列表解析
+blist = ['e', 'f']
+clist = [x*2 for x in blist]
+print(clist)
+
+# 元组 tuple 不可变的
+my_list = (1,)
+print(my_list)
+
+# 字典 dict （map）key是不可变对象 数学意义上的无序和无重复元素的集合
+my_map = {'bob': 75, 'tom': 66, 'lisa': 87}
+print(my_map['bob'])
+# 通过key放入
+my_map['soal'] = 55
+print(my_map)
+# 查看key是否存在
+print('bob' in my_map)
+print(my_map.get('bo1b'))
+my_map.pop('lisa')
+
+# set 不可重复的key(重复自动过滤)
+my_set = set([1, 2, 3, 1, 2, 3])
+print(my_set)
+# add添加
+my_set.add(4)
+print(my_set)
+# remove删除
+my_set.remove(4)
+print(my_set)
+
+
+# 定义一个函数
+def my_test(x):
+    if x > 50:
+        return '当前数字大于五十'
+    elif x < 50:
+        return '当前数字小于五十'
+    else:
+        return '当前数字是五十'
+print(my_test(55))
+
+print(math.sqrt(2))
+
+
+def power(x, n=2):
+    num = 1
+    while n > 0:
+        n = n - 1
+        num = x * num
+    return num
+print(power(5, 3))
+
+# 默认参数必须指向不变对象！
+
+
+def fact(n):
+    if n == 1:
+        return 1
+    return n * fact(n - 1)
+
+print(fact(10))
+
+
+# def move(n, a, b, c):
+#     if n == 1:
+#         print(a, '-->', c)
+#     else:
+#         move(n-1, a, c, b)
+#         move(1, a, b, c,)
+#         move(n-1, b, a, c)
+#
+# move(5, 'A', 'B', 'C')
+
+# 检查元素是否可以迭代
+print(isinstance('132', Iterable))
