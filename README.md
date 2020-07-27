@@ -1,6 +1,6 @@
 # Python-Basic
-python 基础学习笔记
-----
+`python 基础学习笔记`
+
 
 1.PythonBasic.py             ---Python基础
 
