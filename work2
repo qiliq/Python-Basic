@@ -1,0 +1,355 @@
+<?php
+/**
+ * audit_trail_logic, HumanBridge Portal
+ *
+ * @package   HumanBridgePortal
+ * @author    FUJITSU LIMITED.
+ * @copyright Copyright 2012, FUJITSU LIMITED.
+ * @since     Version 1.0
+ * @filesource
+ */
+
+/**
+ * ベースロジック
+ */
+require_once(dirname(dirname(__FILE__)) . '/base/base_logic.php');
+
+/**
+ * ログインビジネスロジッククラス
+ *
+ * @package HumanBridgePortal
+ * @subpackage アプリ基盤
+ * @category 共通部品
+ * @author  FXS)斉
+ * @version $Revision$
+ */
+class Audit_trail_logic extends Base_logic {
+
+  // 1：更新前
+  const UPDATA_BEFORE = '1';
+
+  // 2：更新後  
+  const UPDATA_AFTER = '2';
+
+  /**
+   * コンストラクト
+   *
+   * @access protected
+   */
+  public function __construct() {
+
+    parent::__construct();
+
+  }
+
+  /**
+   * 監査証跡登録処理を行
+   *
+   * @access public
+   * @param $sql_type  SQL種別
+   *        $user_id  ユーザーID
+   *        $screen_id  画面ID
+   *        $table_data_before 更新前のテーブルデータ
+   *        $service_id  サービスID
+   */
+  public function register_audit_trail($sql_type, $user_id, $screen_id, $table_data_before, $service_id = NULL) {
+
+    // 更新前データを取得
+    if ($sql_type != Portal_const::OPERATION_INSERT) {
+      $table_data = $table_data_before->get_base();
+      if (common_logic::get()->execute('is_empty', $table_data)) {
+        return FALSE;
+      }
+    } else {
+      $table_data = $table_data_before;
+    }
+    
+    $m_info_id = $this->_get_info_id($table_data_before->table);
+    if (common_logic::get()->execute('is_empty', $m_info_id)) {
+      return FALSE;
+    }
+
+    global $operation_id;
+    global $record_no;
+    if (common_logic::get()->execute('is_empty', $operation_id)) {
+
+      $record_no = 1;
+      // 「採番管理テーブル」のモデルクラスをインスタンス化する
+      $t_receipt_number = new T_receipt_number();
+
+      // 新しい「操作ID」を取得
+      $operation_id = $t_receipt_number->get_new_number($user_id, Receipt_number_const::TABLE_AUDIT_TRAIL, Receipt_number_const::COLUMN_OPERATION_ID, Receipt_number_const::TYPE_AUDIT_TRAIL);
+    }
+
+    if (common_logic::get()->execute('is_empty', $service_id)) {
+      $service_id = Portal_const::IDENTIFICATION_ID_PORTAL;
+    }
+
+    // 証跡管理テーブル登録
+    $insert_audit_trail_result = $this->_insert_audit_trail($operation_id, $service_id, $screen_id, $user_id);
+    if ($insert_audit_trail_result == FALSE) {
+      throw new System_exception(Message_const::INSERT_FAILURE_MID, array('登録情報'), __FUNCTION__);
+    }
+
+    // 操作管理テーブル
+    $insert_operation_manages_result = $this->_insert_operation_manages($operation_id, $m_info_id, $user_id);
+    if ($insert_operation_manages_result == FALSE) {
+      throw new System_exception(Message_const::INSERT_FAILURE_MID, array('登録情報'), __FUNCTION__);
+    }
+
+    // 更新前  証跡テーブル登録
+    $insert_histories_before_result = $this->_insert_histories_before($operation_id, $record_no, $table_data, $user_id);
+    if ($insert_histories_before_result == FALSE) {
+      throw new System_exception(Message_const::INSERT_FAILURE_MID, array('登録情報'), __FUNCTION__);
+    }
+
+    return true;
+  }
+
+  /**
+   * 証跡管理テーブル登録
+   *
+   * @access private
+   * @param $t_operation_id  操作ID
+   *        $service_id  サービスID
+   *        $screen_id  画面ID 
+   *        $user_id  ユーザーID
+   * @return boolean エラーがない場合： TRUE；エラーがある場合：FALSE
+   */
+  private function _insert_audit_trail($t_operation_id, $service_id, $screen_id, $user_id) {
+
+    $t_audit_trail_manages = new T_audit_trail_manages();
+
+    $curren_timestamp = $t_audit_trail_manages->get_generated_timestamp();
+    $t_audit_trail_manages->t_operation_id = $t_operation_id;
+    $t_audit_trail_manages->m_service_id = $service_id;
+    $t_audit_trail_manages->m_screen_id = $screen_id;
+    $t_audit_trail_manages->operater_id = $user_id;
+    $t_audit_trail_manages->operate_dt = $curren_timestamp;
+    $t_audit_trail_manages->logically_delete_flg = Portal_const::LOGICALLY_UNDELETE_FLG;
+    $t_audit_trail_manages->creator_id = $user_id;
+    $t_audit_trail_manages->created_dt = $curren_timestamp;
+    $t_audit_trail_manages->version = Portal_const::VERSION;
+
+    $save_result = $t_audit_trail_manages->save_as_new();
+
+    return $save_result;
+  }
+
+  /**
+   * 情報種別管理マスタの主キーを取得する
+   *
+   * @access private
+   * @param $table_name  テーブル名
+   * @return String m_info_id
+   */
+  private function _get_info_id($table_name) {
+
+    $m_information_manages = new M_information_manages();
+
+    $m_information_manages->where('table_name', $table_name);
+    $m_information_manages->where('logically_delete_flg', Portal_const::LOGICALLY_UNDELETE_FLG);
+
+    $result = $m_information_manages->get_base();
+
+    return $result->m_info_id;
+  }
+
+  /**
+   * 操作管理テーブル登録
+   *
+   * @access private
+   * @param $t_operation_id  操作ID
+   *        $m_info_id  情報ID
+   *        $user_id  ユーザーID
+   *        $curren_timestamp  操作日時 
+   * @return boolean エラーがない場合： TRUE；エラーがある場合：FALSE
+   */
+  private function _insert_operation_manages($t_operation_id, $m_info_id, $user_id) {
+
+    $t_operation_manages = new T_operation_manages();
+
+    $curren_timestamp = $t_operation_manages->get_generated_timestamp();
+    $t_operation_manages->t_operation_id = $t_operation_id;
+    $t_operation_manages->m_info_id = $m_info_id;
+    $t_operation_manages->logically_delete_flg = Portal_const::LOGICALLY_UNDELETE_FLG;
+    $t_operation_manages->creator_id = $user_id;
+    $t_operation_manages->created_dt = $curren_timestamp;
+    $t_operation_manages->version = Portal_const::VERSION;
+
+    $save_result = $t_operation_manages->save_as_new();
+
+    return $save_result;
+  }
+
+  /**
+   * 更新前  証跡テーブル登録
+   *
+   * @access private
+   * @param $t_operation_id  操作ID
+   *        $record_no  情報ID
+   *        $table_data_before  更新前のテーブルデータ
+   *        $user_id  ユーザーID  
+   *        $curren_timestamp  操作日時  
+   * @return boolean エラーがない場合： TRUE；エラーがある場合：FALSE
+   */
+  public function _insert_histories_before($t_operation_id, $record_no, $table_data, $user_id) {
+
+    // 対象テーブル名を取得
+    $Table_name = get_class($table_data).'_histories';
+    
+    $fields = $table_data->fields;
+
+    // INSERT
+    if (common_logic::get()->execute('is_empty',$table_data->all)) {
+      $table = new $Table_name();
+      $curren_timestamp = $table->get_generated_timestamp();
+      $table->t_operation_id = $t_operation_id;
+      $table->record_no = $record_no;
+      $table->update_type = audit_trail_logic::UPDATA_BEFORE;
+      $table->logically_delete_flg = Portal_const::LOGICALLY_UNDELETE_FLG;
+      $table->creator_id = $user_id;
+      $table->created_dt = $curren_timestamp;
+      $table->version = Portal_const::VERSION;
+      $save_result = $table->save_as_new();
+      return $save_result;
+    }
+
+    foreach ($table_data->all as $data) {
+      $table = new $Table_name();
+      $curren_timestamp = $table->get_generated_timestamp();
+      $table->t_operation_id = $t_operation_id;
+      $table->record_no = $record_no;
+      $table->update_type = audit_trail_logic::UPDATA_BEFORE;
+      foreach ($fields as $value) {
+        if ($value == 'logically_delete_flg' || $value == 'creator_id' || $value == 'created_dt'
+             || $value == 'updater_id' || $value == 'updated_dt' || $value == 'version') {
+          $op_field = 'op_' . $value;
+          $table->$op_field = $data->$value;
+          continue;
+        }
+        $table->$value = $data->$value;
+      }
+      $table->logically_delete_flg = Portal_const::LOGICALLY_UNDELETE_FLG;
+      $table->creator_id = $user_id;
+      $table->created_dt = $curren_timestamp;
+      $table->version = Portal_const::VERSION;
+      $save_result = $table->save_as_new();
+      $record_no++;
+    }
+
+    return $save_result;
+  }
+
+  /**
+   * 更新後  証跡テーブル登録
+   *
+   * @access public
+   * @param $t_operation_id  操作ID
+   *        $record_no  レコードNo
+   *        $sql_type  SQL種別
+   *        $table_data_after  更新後のテーブルデータ
+   *        $user_id  ユーザーID
+   *        $curren_timestamp  操作日時 
+   */
+  public function insert_histories_after($sql_type, $table_data_before, $user_id) {
+
+    global $operation_id;
+    global $record_no;
+
+    // 対象テーブル名を取得
+    $Table_name = get_class($table_data_before).'_histories';
+    $fields = $table_data_before->fields;
+    // 
+    if (common_logic::get()->execute('is_empty',$table_data_before->all)) {
+      $table = new $Table_name();
+      $curren_timestamp = $table->get_generated_timestamp();
+      
+      $table->t_operation_id = $operation_id;
+      $table->record_no = $record_no;
+      $table->update_type = audit_trail_logic::UPDATA_AFTER;
+      $table->sql_type = $sql_type;
+      foreach ($fields as $value) {
+        if ($value == 'logically_delete_flg' || $value == 'creator_id' || $value == 'created_dt'
+            || $value == 'updater_id' || $value == 'updated_dt' || $value == 'version') {
+          $op_field = 'op_' . $value;
+          $table->$op_field = $table_data_before->$value;
+          continue;
+        }
+        $table->$value = $table_data_before->$value;
+      }
+      $table->logically_delete_flg = Portal_const::LOGICALLY_UNDELETE_FLG;
+      $table->creator_id = $user_id;
+      $table->created_dt = $curren_timestamp;
+      $table->version = Portal_const::VERSION;
+      $save_result = $table->save_as_new();
+      return;
+    }
+
+    if ($sql_type == Portal_const::OPERATION_DELETE) {
+    
+      foreach ($table_data_before->all as $data) {
+        $table = new $Table_name();
+        $curren_timestamp = $table->get_generated_timestamp();
+        $table->t_operation_id = $operation_id;
+        $table->record_no = $record_no;
+        $table->update_type = audit_trail_logic::UPDATA_AFTER;
+        $table->logically_delete_flg = Portal_const::LOGICALLY_UNDELETE_FLG;
+        $table->creator_id = $user_id;
+        $table->created_dt = $curren_timestamp;
+        $table->version = Portal_const::VERSION;
+        $save_result = $table->save_as_new();
+        $record_no++;
+      }
+      return;
+    }
+    $table_data = $table_data_before->get_base();
+    foreach ($table_data->all as $data) {
+      
+      $table = new $Table_name();
+      $curren_timestamp = $table->get_generated_timestamp();
+      
+      $table->t_operation_id = $operation_id;
+      $table->record_no = $record_no;
+      $table->update_type = audit_trail_logic::UPDATA_AFTER;
+      $table->sql_type = $sql_type;
+
+      foreach ($fields as $value) {
+        if ($value == 'logically_delete_flg' || $value == 'creator_id' || $value == 'created_dt'
+            || $value == 'updater_id' || $value == 'updated_dt' || $value == 'version') {
+          $op_field = 'op_' . $value;
+          $table->$op_field = $data->$value;
+          continue;
+        }
+        $table->$value = $data->$value;
+      }
+  
+      $table->logically_delete_flg = Portal_const::LOGICALLY_UNDELETE_FLG;
+      $table->creator_id = $user_id;
+      $table->created_dt = $curren_timestamp;
+      $table->version = Portal_const::VERSION;
+      $save_result = $table->save_as_new();
+      $record_no++;
+    }
+    if ($save_result == FALSE) {
+      throw new System_exception(Message_const::UPDATE_FAILURE_MID, array('登録情報'), __FUNCTION__);
+    }
+  }
+
+  /**
+   * 監査証跡通知
+   *
+   * @access public
+   * @param $t_operation_id  操作ID
+   *        $record_no  レコードNo
+   *        $sql_type  SQL種別
+   *        $table_data_after  更新後のテーブルデータ
+   *        $user_id  ユーザーID
+   *        $curren_timestamp  操作日時
+   */
+  public function trail_notification() {
+    
+  }
+}
+/* End of file audit_trail_logic.php */
+/* Location: ./application/controllers/common/audit_trail_logic.php */
