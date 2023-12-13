@@ -1,0 +1,4 @@
+https://ai-foundation-api.app/ai-foundation/chat-ai/gpt4
+Content-Type:application/json
+api-key:Sqc8PIK1cTwV23A9abUbL2BIBxOWVzGuU6AOMmGGSF28esXh
+{ "messages": [{"role": "system", "content": "百科全书"},{"role": "user", "content": "鲁迅和周树人"}], "max_tokens": 300, "presence_penalty": 1.5, "temperature": 0.5}
