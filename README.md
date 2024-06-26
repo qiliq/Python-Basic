@@ -17,13 +17,3 @@
 7.Python Exception hierarchy ---python异常汇总
 
 8.Pycharm # no inspection    ---Pychorm取消代码异常提醒的注释方法
-
-https://www.zybuluo.com/mdeditor
-
-SELECT
-	TABLE_NAME
-FROM
-	information_schema.tables
-WHERE
-	table_schema = 'public'
-AND TABLE_NAME LIKE 't%'   
